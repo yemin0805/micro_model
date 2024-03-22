@@ -25,6 +25,8 @@ Rcu::Rcu(
     m_Snapshot("Snapshot",SnapShotNum),
     m_SupportRollback(SupportRollBack),
     m_AllocWidth(AllocWidth),
+    m_station1("ReserveStation1",10),
+    m_station2("ReserveStation1",10),
     m_DeallocWidth(DeallocWidth)
 {}
 
@@ -44,6 +46,9 @@ Rcu::Reset(){
     this->m_IntBusylist.Reset(this->m_RenameRegister);
     /* Reset FreeList */
     this->m_IntFreelist.Reset();
+    for(int i=0;i<32;i++){
+        ISA_Reg_busy[i]=0;
+    }
 }
 
 void 
@@ -52,6 +57,38 @@ Rcu::Rename(InsnPkg_t& insnPkg){
         insn->PhyRs1 = this->m_IntRenameTable[insn->IsaRs1];
         insn->PhyRs2 = this->m_IntRenameTable[insn->IsaRs2];
         insn->LPhyRd = this->m_IntRenameTable[insn->IsaRd];
+    }
+}
+void 
+Rcu::ReserveStation(InsnPkg_t& insnPkg){
+    RStation_t newStation;
+    for(auto& insn : insnPkg){
+        
+        if(ISA_Reg_busy[insn->IsaRs1]==true) {
+            newStation.label1=ISA_Reg_label[insn->IsaRs1];
+        }
+        else {
+            if(insn->Operand1Ready==false)this->m_Processor->m_ExecContext->ReadIntReg(insn->IsaRs1,newStation.operate_Num1);
+            insn->Operand1Ready=-1;
+        }
+        if(ISA_Reg_busy[insn->IsaRs2]==true) {
+            newStation.label2=ISA_Reg_label[insn->IsaRs2];
+        }
+        else {
+            if(insn->Operand1Ready==false)this->m_Processor->m_ExecContext->ReadIntReg(insn->IsaRs2,newStation.operate_Num2);
+            newStation.label2=-1;
+        }
+        if(insn->Fu==funcType_t::LDU||funcType_t::STU){
+            m_station1.Push(newStation);
+            ISA_Reg_busy[insn->IsaRd]=true;
+            ISA_Reg_label[insn->IsaRd]=m_station1.getLastest();
+        }
+        else{
+            m_station2.Push(newStation);
+            ISA_Reg_busy[insn->IsaRd]=true;
+            ISA_Reg_label[insn->IsaRd]=m_station2.getLastest()+10;//station1 size=10
+        }
+        
     }
 }
 
@@ -218,6 +255,28 @@ void
 Rcu::Forwarding(InsnPtr_t& insn){
     this->m_IntRegfile[insn->PhyRd] = insn->RdResult;
     this->m_IntBusylist[insn->PhyRd].done = true;
+    
+    for(int i;i<m_station1.getAvailEntryCount();i++){
+        if(m_station1[i].label1==this->ISA_Reg_label[insn->IsaRd]){
+            m_station1[i].operate_Num1=insn->RdResult;
+            m_station1[i].label1=-1;
+        }
+        if(m_station1[i].label2==this->ISA_Reg_label[insn->IsaRd]){
+            m_station1[i].operate_Num2=insn->RdResult;
+            m_station1[i].label2=-1;
+        }
+    }
+    for(int i;i<m_station2.getAvailEntryCount();i++){
+        if(m_station2[i].label1==this->ISA_Reg_label[insn->IsaRd]){
+            m_station2[i].operate_Num1=insn->RdResult;
+            m_station2[i].label1=-1;
+        }
+        if(m_station2[i].label2==this->ISA_Reg_label[insn->IsaRd]){
+            m_station2[i].operate_Num2=insn->RdResult;
+            m_station2[i].label2=-1;
+        }
+    }
+    this->ISA_Reg_busy[insn->IsaRd]=false;
 }
 
 void 

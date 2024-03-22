@@ -55,6 +55,23 @@ struct Snapshot_t
     {}
 };
 
+struct RStation_t
+{
+    int16_t label1;
+    int16_t label2;
+    xlen_t operate_Num1;
+    xlen_t operate_Num2;
+    bool done;
+
+    RStation_t()
+    :   label1(0),
+        label2(0),
+        operate_Num1(0),
+        operate_Num2(0),
+        done(false)
+    {}
+};
+
 
 class Processor;
 class Rcu : Trace::TraceObject
@@ -81,6 +98,11 @@ public:
     xlen_t                      m_ExcpCause;
 
     xlen_t                      m_ExcpTval;
+
+    LoopQueue<RStation_t>       m_station1;
+    LoopQueue<RStation_t>       m_station2;
+    bool                        ISA_Reg_busy[32];
+    bool                        ISA_Reg_label[32];
 
     /* Interger */
 
@@ -112,6 +134,8 @@ public:
     void Reset();
 
     void Rename(InsnPkg_t& insnPkg);
+
+    void ReserveStation(InsnPkg_t& insnPkg);
 
     void CreateRobEntry(InsnPtr_t& insn);
 
